@@ -36,6 +36,9 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "experiments": {
+      "baseUrl": "/Trabajo-Mercado"
+    },
     "plugins": [
       [
         "expo-camera",
