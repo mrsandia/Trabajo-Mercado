@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "FitCampus",
+    "slug": "fitcampus",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D1B2A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.universidad.fitcampus",
+      "infoPlist": {
+        "NSCameraUsageDescription": "FitCampus necesita acceso a la cámara para escanear los códigos QR de las máquinas de ejercicio.",
+        "NSMotionUsageDescription": "FitCampus necesita acceso al acelerómetro para contar tus pasos."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0D1B2A"
+      },
+      "package": "com.universidad.fitcampus",
+      "permissions": [
+        "CAMERA",
+        "ACTIVITY_RECOGNITION",
+        "BODY_SENSORS"
+      ],
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "FitCampus necesita acceso a la cámara para escanear los QR de las máquinas."
+        }
+      ]
+    ]
+  }
+}
