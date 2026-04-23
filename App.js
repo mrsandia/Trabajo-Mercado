@@ -1,9 +1,10 @@
+import 'react-native-gesture-handler';
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { Text, View, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet, Platform } from 'react-native';
 
 import { AppProvider } from './src/context/AppContext';
 import { COLORS } from './src/utils/theme';
@@ -16,7 +17,7 @@ import StepCounterScreen from './src/screens/StepCounterScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
-const RootStack = createStackNavigator();
+const RootStack = createNativeStackNavigator();
 
 function TabIcon({ emoji, focused }) {
   return (
@@ -92,37 +93,52 @@ function MainTabs() {
   );
 }
 
+class ErrorBoundary extends React.Component {
+  state = { error: null };
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={{ flex: 1, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', padding: 30 }}>
+          <Text style={{ color: COLORS.accentRed, fontSize: 18, fontWeight: '700', marginBottom: 12 }}>Error al cargar</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: 'center' }}>{String(this.state.error)}</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AppProvider>
-        <NavigationContainer
-          theme={{
-            dark: true,
-            colors: {
-              primary: COLORS.accent,
-              background: COLORS.bg,
-              card: COLORS.card,
-              text: COLORS.text,
-              border: COLORS.border,
-              notification: COLORS.accent,
-            },
-          }}
-        >
-          <RootStack.Navigator screenOptions={{ headerShown: false }}>
-            <RootStack.Screen name="MainTabs" component={MainTabs} />
-            <RootStack.Screen
-              name="ExerciseSummary"
-              component={ExerciseSummaryScreen}
-              options={{
-                presentation: 'modal',
-                headerShown: false,
-              }}
-            />
-          </RootStack.Navigator>
-        </NavigationContainer>
-      </AppProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <AppProvider>
+          <NavigationContainer
+            theme={{
+              dark: true,
+              colors: {
+                primary: COLORS.accent,
+                background: COLORS.bg,
+                card: COLORS.card,
+                text: COLORS.text,
+                border: COLORS.border,
+                notification: COLORS.accent,
+              },
+            }}
+          >
+            <RootStack.Navigator screenOptions={{ headerShown: false }}>
+              <RootStack.Screen name="MainTabs" component={MainTabs} />
+              <RootStack.Screen
+                name="ExerciseSummary"
+                component={ExerciseSummaryScreen}
+                options={{ presentation: 'modal' }}
+              />
+            </RootStack.Navigator>
+          </NavigationContainer>
+        </AppProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 
