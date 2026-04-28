@@ -5,16 +5,15 @@ namespace DungeonSystem
     /// <summary>
     /// Attach to the room prefab root.
     ///
-    /// Prefab structure expected:
-    ///   RoomRoot  (this component)
-    ///   ├── DoorNorth / DoorSouth / DoorEast / DoorWest   ← wall/door GOs
-    ///   ├── Content_Normal
-    ///   ├── Content_Start
-    ///   ├── Content_Boss
-    ///   ├── Content_Treasure
-    ///   └── Content_Shop
-    ///
-    /// On Initialize() the matching Content_* child is enabled; the rest stay off.
+    /// Prefab structure:
+    ///   RoomRoot  (Room component)
+    ///   ├── DoorNorth / DoorSouth / DoorEast / DoorWest
+    ///   │     └── DoorLock  ← child GO shown while doors are locked
+    ///   ├── Content_Normal   (NormalRoomContent component)
+    ///   ├── Content_Start    (StartRoomContent component)
+    ///   ├── Content_Boss     (BossRoomContent component)
+    ///   ├── Content_Treasure (TreasureRoomContent component)
+    ///   └── Content_Shop     (ShopRoomContent component)
     /// </summary>
     public class Room : MonoBehaviour
     {
@@ -24,6 +23,12 @@ namespace DungeonSystem
         public GameObject doorEast;
         public GameObject doorWest;
 
+        [Header("Door lock overlays (shown while enemies are alive)")]
+        public GameObject lockNorth;
+        public GameObject lockSouth;
+        public GameObject lockEast;
+        public GameObject lockWest;
+
         [Header("Content roots — one per room type")]
         public GameObject contentNormal;
         public GameObject contentStart;
@@ -31,11 +36,15 @@ namespace DungeonSystem
         public GameObject contentTreasure;
         public GameObject contentShop;
 
-        [Header("Player spawn point inside this room")]
+        [Header("Player spawn point")]
         public Transform playerSpawnPoint;
 
         public Vector2Int GridPosition { get; private set; }
-        public RoomType RoomType      { get; private set; }
+        public RoomType   RoomType     { get; private set; }
+
+        private IRoomContent _activeContent;
+
+        // ── Generator API ────────────────────────────────────────────────────
 
         public void Initialize(Vector2Int gridPos, RoomType type)
         {
@@ -52,7 +61,25 @@ namespace DungeonSystem
             Toggle(doorWest,  west);
         }
 
-        public void SetVisible(bool visible) => gameObject.SetActive(visible);
+        /// <summary>Locks/unlocks all doors that exist (called by content scripts).</summary>
+        public void LockDoors(bool locked)
+        {
+            // Only lock directions that actually have a door
+            Toggle(lockNorth, locked && doorNorth != null && doorNorth.activeSelf);
+            Toggle(lockSouth, locked && doorSouth != null && doorSouth.activeSelf);
+            Toggle(lockEast,  locked && doorEast  != null && doorEast.activeSelf);
+            Toggle(lockWest,  locked && doorWest  != null && doorWest.activeSelf);
+        }
+
+        // ── Visibility / lifecycle ───────────────────────────────────────────
+
+        public void SetVisible(bool visible)
+        {
+            gameObject.SetActive(visible);
+            if (visible) _activeContent?.OnRoomEnter();
+        }
+
+        // ── Internal ─────────────────────────────────────────────────────────
 
         private void ActivateContent(RoomType type)
         {
@@ -61,6 +88,18 @@ namespace DungeonSystem
             Toggle(contentBoss,     type == RoomType.Boss);
             Toggle(contentTreasure, type == RoomType.Treasure);
             Toggle(contentShop,     type == RoomType.Shop);
+
+            GameObject active = type switch
+            {
+                RoomType.Normal   => contentNormal,
+                RoomType.Start    => contentStart,
+                RoomType.Boss     => contentBoss,
+                RoomType.Treasure => contentTreasure,
+                RoomType.Shop     => contentShop,
+                _                 => null
+            };
+
+            _activeContent = active != null ? active.GetComponent<IRoomContent>() : null;
         }
 
         private static void Toggle(GameObject go, bool active)
