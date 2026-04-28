@@ -4,25 +4,28 @@ using UnityEngine;
 namespace DungeonSystem
 {
     /// <summary>
-    /// Generates a Binding-of-Isaac-style dungeon on a 2D grid.
-    /// All rooms share one prefab; the Room component activates the
-    /// correct content section based on the assigned RoomType.
+    /// Genera un mapa al estilo Binding of Isaac.
+    /// Cada habitación usa el prefab cuya combinación de puertas coincide
+    /// con sus vecinos en la grilla (Norte/Sur/Este/Oeste).
     /// </summary>
     public class DungeonGenerator : MonoBehaviour
     {
-        [Header("Prefab")]
-        public GameObject roomPrefab;
+        [Header("Prefabs por combinación de puertas")]
+        [Tooltip("Añade una entrada por cada forma de habitación que tengas. " +
+                 "Marca las puertas que tiene ese prefab.")]
+        public RoomPrefabEntry[] roomPrefabs;
 
-        [Header("Generation")]
-        public bool  randomSeed    = true;
-        public int   seed          = 0;
+        [Header("Generación")]
+        public bool    randomSeed  = true;
+        public int     seed        = 0;
         [Range(5, 50)]
-        public int   targetRooms   = 12;
+        public int     targetRooms = 12;
+        [Tooltip("Tamaño en unidades de mundo de cada celda")]
         public Vector2 roomSize    = new Vector2(18f, 10f);
 
-        [Header("Special rooms (placed on dead ends)")]
-        public int treasureRooms = 1;
-        public int shopRooms     = 1;
+        [Header("Habitaciones especiales (0 = desactivadas)")]
+        public int treasureRooms = 0;
+        public int shopRooms     = 0;
 
         private readonly Dictionary<Vector2Int, Room> _rooms = new();
         private Room _currentRoom;
@@ -32,7 +35,7 @@ namespace DungeonSystem
 
         void Start() => Generate();
 
-        // ── Public API ───────────────────────────────────────────────────────
+        // ── API pública ──────────────────────────────────────────────────────
 
         public void Generate()
         {
@@ -43,7 +46,6 @@ namespace DungeonSystem
             var layout  = BuildLayout();
             var typeMap = AssignTypes(layout);
             SpawnRooms(layout, typeMap);
-            ApplyDoors();
 
             EnterRoom(Vector2Int.zero);
         }
@@ -90,17 +92,16 @@ namespace DungeonSystem
             return result;
         }
 
-        // ── Type assignment ──────────────────────────────────────────────────
+        // ── Tipos de habitación ──────────────────────────────────────────────
 
         private Dictionary<Vector2Int, RoomType> AssignTypes(List<Vector2Int> layout)
         {
             var map     = new Dictionary<Vector2Int, RoomType>();
             var gridSet = new HashSet<Vector2Int>(layout);
 
-            map[Vector2Int.zero]             = RoomType.Start;
+            map[Vector2Int.zero] = RoomType.Start;
             map[FarthestFrom(layout, Vector2Int.zero)] = RoomType.Boss;
 
-            // Collect unassigned dead ends for special rooms
             var deadEnds = new List<Vector2Int>();
             foreach (Vector2Int pos in layout)
                 if (!map.ContainsKey(pos) && NeighbourCount(gridSet, pos) == 1)
@@ -110,7 +111,7 @@ namespace DungeonSystem
             int idx = 0;
             for (int i = 0; i < treasureRooms && idx < deadEnds.Count; i++, idx++)
                 map[deadEnds[idx]] = RoomType.Treasure;
-            for (int i = 0; i < shopRooms    && idx < deadEnds.Count; i++, idx++)
+            for (int i = 0; i < shopRooms && idx < deadEnds.Count; i++, idx++)
                 map[deadEnds[idx]] = RoomType.Shop;
 
             foreach (Vector2Int pos in layout)
@@ -119,17 +120,35 @@ namespace DungeonSystem
             return map;
         }
 
-        // ── Spawning ─────────────────────────────────────────────────────────
+        // ── Instanciado ──────────────────────────────────────────────────────
 
         private void SpawnRooms(List<Vector2Int> layout, Dictionary<Vector2Int, RoomType> typeMap)
         {
+            var layoutSet = new HashSet<Vector2Int>(layout);
+
             foreach (Vector2Int pos in layout)
             {
-                GameObject go = Instantiate(roomPrefab, GridToWorld(pos), Quaternion.identity, transform);
+                bool n = layoutSet.Contains(pos + Vector2Int.up);
+                bool s = layoutSet.Contains(pos + Vector2Int.down);
+                bool e = layoutSet.Contains(pos + Vector2Int.right);
+                bool w = layoutSet.Contains(pos + Vector2Int.left);
+
+                GameObject prefab = GetPrefabForDoors(n, s, e, w);
+                if (prefab == null)
+                {
+                    Debug.LogWarning($"No hay prefab para la combinación N:{n} S:{s} E:{e} W:{w} en {pos}. Se omite.");
+                    continue;
+                }
+
+                GameObject go = Instantiate(prefab, GridToWorld(pos), Quaternion.identity, transform);
                 go.name = $"Room_{pos.x}_{pos.y}_{typeMap[pos]}";
 
                 Room room = go.GetComponent<Room>();
-                if (room == null) { Debug.LogError("roomPrefab is missing a Room component!"); continue; }
+                if (room == null)
+                {
+                    Debug.LogError($"El prefab '{prefab.name}' no tiene componente Room.", prefab);
+                    continue;
+                }
 
                 room.Initialize(pos, typeMap[pos]);
                 room.SetVisible(false);
@@ -137,17 +156,27 @@ namespace DungeonSystem
             }
         }
 
-        private void ApplyDoors()
+        // Busca coincidencia exacta; si no existe, usa el primer prefab como fallback.
+        private GameObject GetPrefabForDoors(bool n, bool s, bool e, bool w)
         {
-            foreach (var (pos, room) in _rooms)
-                room.SetDoors(
-                    north: _rooms.ContainsKey(pos + Vector2Int.up),
-                    south: _rooms.ContainsKey(pos + Vector2Int.down),
-                    east:  _rooms.ContainsKey(pos + Vector2Int.right),
-                    west:  _rooms.ContainsKey(pos + Vector2Int.left));
+            foreach (var entry in roomPrefabs)
+                if (entry.north == n && entry.south == s && entry.east == e && entry.west == w)
+                    return entry.prefab;
+
+            // Fallback: prefab con más puertas en común
+            int bestScore = -1;
+            GameObject best = null;
+            foreach (var entry in roomPrefabs)
+            {
+                if (entry.prefab == null) continue;
+                int score = (entry.north == n ? 1 : 0) + (entry.south == s ? 1 : 0)
+                          + (entry.east  == e ? 1 : 0) + (entry.west  == w ? 1 : 0);
+                if (score > bestScore) { bestScore = score; best = entry.prefab; }
+            }
+            return best;
         }
 
-        // ── Transitions ──────────────────────────────────────────────────────
+        // ── Transiciones ─────────────────────────────────────────────────────
 
         private void EnterRoom(Vector2Int pos)
         {
@@ -157,7 +186,7 @@ namespace DungeonSystem
             RoomManager.Instance?.OnRoomEntered(_currentRoom);
         }
 
-        // ── Helpers ──────────────────────────────────────────────────────────
+        // ── Utilidades ───────────────────────────────────────────────────────
 
         private int NeighbourCount(HashSet<Vector2Int> set, Vector2Int pos)
         {
@@ -169,7 +198,7 @@ namespace DungeonSystem
         private Vector2Int FarthestFrom(List<Vector2Int> layout, Vector2Int origin)
         {
             Vector2Int best = origin;
-            float maxDist = -1f;
+            float maxDist   = -1f;
             foreach (Vector2Int pos in layout)
             {
                 float d = (pos - origin).sqrMagnitude;
@@ -192,6 +221,16 @@ namespace DungeonSystem
                 int j = Random.Range(0, i + 1);
                 (list[i], list[j]) = (list[j], list[i]);
             }
+        }
+
+        // ── Struct serializable ──────────────────────────────────────────────
+
+        [System.Serializable]
+        public struct RoomPrefabEntry
+        {
+            [Tooltip("Puertas que tiene este prefab")]
+            public bool north, south, east, west;
+            public GameObject prefab;
         }
     }
 }
